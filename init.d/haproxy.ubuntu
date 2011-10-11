@@ -2,10 +2,16 @@
 # Ubuntu init.d script for haproxy load balancer
 # John Gonzales
 
+# Source function library
+. /lib/lsb/init-functions
+
 HAPROXY_BIN=/usr/local/sbin/haproxy
 HAPROXY_CONF=/etc/haproxy/haproxy.conf
 HAPROXY_PID=/var/run/haproxy.pid
 HAPROXY_LOCK=/var/lock/haproxy.lock
+
+SUCCESS=0
+FAILURE=1
 
 # test existence of haproxy bin and conf
 [ -f $HAPROXY_BIN ]  || exit 0
@@ -14,38 +20,75 @@ HAPROXY_LOCK=/var/lock/haproxy.lock
 set -e
 
 checkconfig () {
+  log_daemon_msg "Checking configuration..."
+
   $HAPROXY_BIN -c -q -f $HAPROXY_CONF
-  if [ $? -ne 0]; then
-    echo "Errors in configuration."
-    return 1
+  if [ $? -ne $SUCCESS ]; then
+    # log_failure_message "Configuration file has errors"
+    log_end_msg $FAILURE
+    return $FAILURE 
   fi
 
-  echo "No errors in configuration."
-  return 0
+  # log_success_msg "Configuration OK"
+  log_end_msg $SUCCESS 
+
+  return $SUCCESS 
 }
 
 start () {
-  # if [ checkconfig -ne 0]; then
-  #   return 1
-  # fi
+  checkconfig
+  if [ $? -ne $SUCCESS ]; then 
+    return $FAILURE
+  fi
 
-  echo -n "Starting HAProxy:"
+  log_daemon_msg "Starting HAProxy"
+
   start-stop-daemon -S -x $HAPROXY_BIN -- -D -f $HAPROXY_CONF -p $HAPROXY_PID
-
   RETVAL=$?
-  echo 
-  [ $RETVAL -eq 0 ] && touch $HAPROXY_LOCK
+  
+  [ $RETVAL -eq $SUCCESS ] && touch $HAPROXY_LOCK
+  log_end_msg $SUCCESS 
+
   return $RETVAL
 }
 
 stop () {
-  echo -n "Stopping HAProxy:"
+  log_daemon_msg "Stopping HAProxy"
+
   start-stop-daemon -K -p $HAPROXY_PID 
   RETVAL=$?
-  echo
-  [ $RETVAL -eq 0 ] && rm -f $HAPROXY_LOCK
-  [ $RETVAL -eq 0 ] && rm -f $HAPROXY_PID
+
+  [ $RETVAL -eq $SUCCESS ] && rm -f $HAPROXY_LOCK
+  [ $RETVAL -eq $SUCCESS ] && rm -f $HAPROXY_PID
+  log_end_msg $SUCCESS 
+
   return $RETVAL
+}
+
+reload () {
+  checkconfig
+  if [ $? -ne $SUCCESS ]; then 
+    return $FAILURE
+  fi
+
+  SIG_FLAG="-sf"
+  if [ $1 -eq 1 ]; then
+    SIG_FLAG="-st"
+  fi
+
+  log_daemon_msg "Reloading configuration file ($SIG_FLAG)"
+	${HAPROXY_BIN} -f ${HAPROXY_CONF} -p ${HAPROXY_PID} -sf $(cat ${HAPROXY_PID})
+  RETVAL=$?
+  log_end_msg $RETVAL
+  return $RETVAL
+}
+
+reloadFinish () {
+  reload 0
+}
+
+reloadTerminate () {
+  reload 1
 }
 
 case "$1" in
@@ -62,9 +105,17 @@ case "$1" in
     checkconfig
     ;;
 
+  reload-finish)
+    reloadFinish
+    ;;
+
+  reload-terminate)
+    reloadTerminate
+    ;;
+
   *)
-    echo "Usage: haproxy (start|stop|checkconfig)"
-    exit 1
+    echo "Usage: haproxy (start|stop|checkconfig|reload-finish|reload-terminate)"
+    exit $FAILURE
 esac
 
-exit 0
+exit $SUCCESS
