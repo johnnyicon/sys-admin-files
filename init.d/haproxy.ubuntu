@@ -1,0 +1,70 @@
+#!/bin/bash
+# Ubuntu init.d script for haproxy load balancer
+# John Gonzales
+
+HAPROXY_BIN=/usr/local/sbin/haproxy
+HAPROXY_CONF=/etc/haproxy/haproxy.conf
+HAPROXY_PID=/var/run/haproxy.pid
+HAPROXY_LOCK=/var/lock/haproxy.lock
+
+# test existence of haproxy bin and conf
+[ -f $HAPROXY_BIN ]  || exit 0
+[ -f $HAPROXY_CONF ] || exit 0
+
+set -e
+
+checkconfig () {
+  $HAPROXY_BIN -c -q -f $HAPROXY_CONF
+  if [ $? -ne 0]; then
+    echo "Errors in configuration."
+    return 1
+  fi
+
+  echo "No errors in configuration."
+  return 0
+}
+
+start () {
+  # if [ checkconfig -ne 0]; then
+  #   return 1
+  # fi
+
+  echo -n "Starting HAProxy:"
+  start-stop-daemon -S -x $HAPROXY_BIN -- -D -f $HAPROXY_CONF -p $HAPROXY_PID
+
+  RETVAL=$?
+  echo 
+  [ $RETVAL -eq 0 ] && touch $HAPROXY_LOCK
+  return $RETVAL
+}
+
+stop () {
+  echo -n "Stopping HAProxy:"
+  start-stop-daemon -K -p $HAPROXY_PID 
+  RETVAL=$?
+  echo
+  [ $RETVAL -eq 0 ] && rm -f $HAPROXY_LOCK
+  [ $RETVAL -eq 0 ] && rm -f $HAPROXY_PID
+  return $RETVAL
+}
+
+case "$1" in
+
+  start)
+    start
+    ;;
+
+  stop)
+    stop
+    ;;
+
+  checkconfig)
+    checkconfig
+    ;;
+
+  *)
+    echo "Usage: haproxy (start|stop|checkconfig)"
+    exit 1
+esac
+
+exit 0
