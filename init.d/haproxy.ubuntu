@@ -77,7 +77,7 @@ reload () {
   fi
 
   log_daemon_msg "Reloading configuration file ($SIG_FLAG)"
-	${HAPROXY_BIN} -f ${HAPROXY_CONF} -p ${HAPROXY_PID} -sf $(cat ${HAPROXY_PID})
+	${HAPROXY_BIN} -f ${HAPROXY_CONF} -p ${HAPROXY_PID} $SIG_FLAG $(cat ${HAPROXY_PID})
   RETVAL=$?
   log_end_msg $RETVAL
   return $RETVAL
